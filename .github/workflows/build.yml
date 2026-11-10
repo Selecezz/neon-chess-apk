@@ -23,15 +23,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Setup Cordova & Build
+      - name: Accept Android SDK Licenses
         run: |
-          npm init -y
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Setup Cordova & Build APK
+        run: |
           npm install -g cordova
           cordova telemetry off
-          cordova create app com.neon.chesshelper "NeonChess"
+          cordova create app com.neon.chesshelper NeonChess
           cp config.xml app/config.xml
           cp -r www/* app/www/
           cd app
