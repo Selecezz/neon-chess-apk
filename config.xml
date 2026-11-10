@@ -1,1 +1,11 @@
-
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.neon.chesshelper" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">
+    <name>Neon Chess</name>
+    <description>Chess Assistant WebView</description>
+    <author email="dev@local">Developer</author>
+    <content src="index.html" />
+    <allow-navigation href="https://*.chess.com/*" />
+    <access origin="*" />
+    <preference name="DisallowOverscroll" value="true" />
+    <preference name="Orientation" value="portrait" />
+</widget>
