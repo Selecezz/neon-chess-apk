@@ -23,13 +23,21 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Cordova and Build APK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android Licenses
         run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Prepare Cordova Project & Build APK
+        run: |
+          npm init -y
           npm install -g cordova
           cordova telemetry off
-          cordova platform add android
-          cordova plugin add cordova-plugin-inappbrowser
-          cordova build android --debug
+          cordova platform add android --save
+          cordova plugin add cordova-plugin-inappbrowser --save
+          cordova build android --debug --no-telemetry
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
