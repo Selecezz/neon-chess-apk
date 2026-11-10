@@ -1,13 +1,19 @@
+/**
+ * Neon Chess Assistant & HUD
+ * Engine: Stockfish 10.0.2 (MultiPV evaluation)
+ * Feature: 3-tier move recommendation (Good, Medium, Weak) with neon visual overlay.
+ */
+
 (function () {
     'use strict';
 
-    // --- 1. KONFIGURASI SISTEM ---
+    // --- 1. SYSTEM CONFIGURATION ---
     const CONFIG = {
-        depth: 10,          // Kedalaman kiraan (D:10 seperti dalam gambar)
-        multiPV: 5,         // Kira 5 langkah terbaik untuk tapis Good, Sederhana, Lemah
-        autoMove: false,    // Status Auto Move
-        delaySeconds: 1,    // Jeda masa analisis
-        selectedTier: 1     // 1 = Good, 2 = Sederhana, 3 = Lemah
+        depth: 10,          // Engine search depth
+        multiPV: 5,         // Calculate top 5 moves to categorize tiers
+        autoMove: false,    // Automatic move execution flag
+        delaySeconds: 1,    // Scan throttle interval (seconds)
+        selectedTier: 1     // Default selected tier: 1 = Good, 2 = Medium, 3 = Weak
     };
 
     let stockfish = null;
@@ -18,8 +24,10 @@
         weak: { move: "-", eval: "0.0", uci: "" }
     };
 
-    // --- 2. BINA ANTARAMUKA HUD & OVERLAY PAPAN (CSS + HTML) ---
+    // --- 2. INJECT HUD STYLES & DOM ELEMENTS ---
     function injectStylesAndHUD() {
+        if (document.getElementById('neon-hud-panel')) return;
+
         const style = document.createElement('style');
         style.innerHTML = `
             #neon-hud-panel {
@@ -194,7 +202,7 @@
                 </div>
             </div>
 
-            <!-- 3 PILIHAN LANGKAH: GOOD, SEDERHANA, LEMAH -->
+            <!-- TIER 1: GOOD MOVE (BEST ENGINE CHOICE) -->
             <div class="move-row tier-good active-tier" data-tier="1" id="row-tier-1">
                 <div class="diamond-icon d-good"><span>1</span></div>
                 <span class="move-san" id="move-1-san">...</span>
@@ -202,17 +210,19 @@
                 <span class="move-score score-good" id="move-1-eval">0.0</span>
             </div>
 
+            <!-- TIER 2: MEDIUM MOVE (SUB-OPTIMAL / NATURAL PLAY) -->
             <div class="move-row tier-med" data-tier="2" id="row-tier-2">
                 <div class="diamond-icon d-med"><span>2</span></div>
                 <span class="move-san" id="move-2-san">...</span>
-                <span class="move-label">SEDERHANA</span>
+                <span class="move-label">MEDIUM</span>
                 <span class="move-score score-med" id="move-2-eval">0.0</span>
             </div>
 
+            <!-- TIER 3: WEAK MOVE (SOLID BUT LOW PRESSURE) -->
             <div class="move-row tier-weak" data-tier="3" id="row-tier-3">
                 <div class="diamond-icon d-weak"><span>3</span></div>
                 <span class="move-san" id="move-3-san">...</span>
-                <span class="move-label">LEMAH</span>
+                <span class="move-label">WEAK</span>
                 <span class="move-score score-weak" id="move-3-eval">0.0</span>
             </div>
 
@@ -231,10 +241,10 @@
         setupHUDInteractions(hud);
     }
 
-    // --- 3. INTERAKSI BUTANG & DRAG HUD (UNTUK SKRIN SENTUH TELEFON) ---
+    // --- 3. HUD CONTROLS & TOUCH DRAG LISTENER ---
     function setupHUDInteractions(hud) {
         const tiers = [1, 2, 3];
-        const tierNames = ["GOOD", "SEDERHANA", "LEMAH"];
+        const tierNames = ["GOOD", "MEDIUM", "WEAK"];
 
         tiers.forEach(t => {
             document.getElementById(`row-tier-${t}`).addEventListener('click', () => {
@@ -274,7 +284,7 @@
             analyzeCurrentBoard(true);
         });
 
-        // Fungsi heret (Drag) mesra skrin sentuh (Touchscreen)
+        // Touchscreen drag logic for mobile devices
         const handle = document.getElementById('hud-drag-handle');
         let isDragging = false, startX, startY, initialLeft, initialTop;
 
@@ -308,7 +318,7 @@
         document.addEventListener('touchend', stopDrag);
     }
 
-    // --- 4. ENJIN STOCKFISH (WEB WORKER) ---
+    // --- 4. STOCKFISH ENGINE (WEB WORKER INITIALIZATION) ---
     async function initStockfish() {
         const workerUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
         const response = await fetch(workerUrl);
@@ -351,23 +361,23 @@
         stockfish.postMessage('isready');
     }
 
-    // --- 5. PEMBAHAGIAN 3 TAHAP: GOOD, SEDERHANA, LEMAH ---
+    // --- 5. CATEGORIZE ENGINE MOVES INTO 3 HUMANIZED TIERS ---
     function updateAnalysisTiers(pvData) {
-        // Tier 1 (Good): Langkah terbaik (Rank 1)
+        // Tier 1 (Good): Optimal engine line (Rank 1)
         if (pvData[1]) {
             currentAnalysis.good = pvData[1];
             document.getElementById('move-1-san').innerText = formatUciToReadable(pvData[1].uci);
             document.getElementById('move-1-eval').innerText = pvData[1].eval;
             document.getElementById('hud-main-eval').innerText = pvData[1].eval;
 
-            // Kemas kini bar PWR
+            // Compute power bar evaluation ratio
             let winPct = Math.min(95, Math.max(5, Math.round(50 + (pvData[1].rawCp / 15))));
             document.getElementById('pwr-win').innerText = winPct;
             document.getElementById('pwr-loss').innerText = 100 - winPct;
             document.getElementById('pwr-bar').style.width = `${winPct}%`;
         }
 
-        // Tier 2 (Sederhana): Langkah kedua atau ketiga terbaik (Rank 2/3)
+        // Tier 2 (Medium): 2nd or 3rd best move alternative
         const medSource = pvData[2] || pvData[1];
         if (medSource) {
             currentAnalysis.medium = medSource;
@@ -375,7 +385,7 @@
             document.getElementById('move-2-eval').innerText = medSource.eval;
         }
 
-        // Tier 3 (Lemah / Sub-optimal): Langkah ke-4 atau ke-5 (tidak blunder teruk tetapi kurang tepat)
+        // Tier 3 (Weak): 4th or 5th ranking option (imperfect without explicit blunder)
         const weakSource = pvData[4] || pvData[3] || pvData[2];
         if (weakSource) {
             currentAnalysis.weak = weakSource;
@@ -391,7 +401,7 @@
         return `${uci.substring(0, 2)} → ${uci.substring(2, 4)}`;
     }
 
-    // --- 6. EKSTRAK FEN DARI PAPAN CHESS.COM ---
+    // --- 6. DOM EXTRACTION & BOARD SCANNING ---
     function getBoardElement() {
         return document.querySelector('wc-chess-board') || document.querySelector('chess-board');
     }
@@ -410,7 +420,7 @@
         stockfish.postMessage(`go depth ${CONFIG.depth}`);
     }
 
-    // --- 7. LUKIS ANAK PANAH NEON DI ATAS PAPAN ---
+    // --- 7. SVG NEON OVERLAY RENDERER ---
     function drawBoardArrows() {
         const board = getBoardElement();
         if (!board) return;
@@ -452,20 +462,20 @@
             const fromSq = uciToCoords(item.data.uci.substring(0, 2), isFlipped);
             const toSq = uciToCoords(item.data.uci.substring(2, 4), isFlipped);
 
-            // Kotak Asal
+            // Starting square bounding highlight
             svg.innerHTML += `
                 <rect x="${fromSq.x - 6.25}" y="${fromSq.y - 6.25}" width="12.5" height="12.5"
                       fill="none" stroke="${item.color}" stroke-width="0.7" opacity="${opacity}" filter="url(#neon-glow)" />
             `;
 
-            // Garisan Anak Panah
+            // Neon trajectory arrow
             svg.innerHTML += `
                 <line x1="${fromSq.x}" y1="${fromSq.y}" x2="${toSq.x}" y2="${toSq.y}"
                       stroke="${item.color}" stroke-width="${strokeWidth}" stroke-linecap="round"
                       opacity="${opacity}" filter="url(#neon-glow)" />
             `;
 
-            // Bulatan Sasaran (Bintang pada pilihan aktif)
+            // Target square destination node
             if (isSelected) {
                 svg.innerHTML += `
                     <circle cx="${toSq.x}" cy="${toSq.y}" r="3.2" fill="#08141e" stroke="${item.color}" stroke-width="1.2" filter="url(#neon-glow)" />
@@ -488,9 +498,10 @@
         };
     }
 
-    // --- 8. MULAKAN SISTEM ---
-    window.addEventListener('load', () => {
-        setTimeout(() => {
-            injectStylesAndHUD();
-            initStockfish();
-            setInterval(() => analyzeCurrentBoard(false), 6
+    // --- 8. INITIALIZE BOOTSTRAPPER ---
+    setTimeout(() => {
+        injectStylesAndHUD();
+        initStockfish();
+        setInterval(() => analyzeCurrentBoard(false), 600);
+    }, 1200);
+})();
