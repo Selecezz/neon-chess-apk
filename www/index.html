@@ -5,28 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <title>Neon Chess</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #080f16; color: #00f0ff; font-family: monospace; display: flex; align-items: center; justify-content: center; }
-        .btn { padding: 14px 24px; border: 1.5px solid #00f0ff; background: rgba(0,240,255,0.1); color: #fff; font-size: 16px; border-radius: 6px; cursor: pointer; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: #080f16; color: #00f0ff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 14px;
+        }
+        .title {
+            font-size: 20px; font-weight: bold; letter-spacing: 2px;
+            margin-bottom: 10px; text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+        }
+        .btn {
+            width: 260px; padding: 14px 20px;
+            border: 1.5px solid #00f0ff; background: rgba(0, 240, 255, 0.1);
+            color: #fff; font-size: 14px; font-family: inherit; font-weight: bold;
+            border-radius: 6px; cursor: pointer; text-align: center;
+        }
+        .btn:active { background: rgba(0, 240, 255, 0.3); }
+        .btn-sub { border-color: #ffaa00; color: #ffaa00; background: rgba(255, 170, 0, 0.08); }
     </style>
 </head>
 <body>
-    <button class="btn" id="launchBtn">BUKA CHESS.COM + HUD</button>
+    <div class="title">⚡ NEON CHESS PRO</div>
+    <button class="btn" id="btnHome">MAIN ONLINE (HOME)</button>
+    <button class="btn" id="btnComputer">LAWAN COMPUTER</button>
+    <button class="btn btn-sub" id="btnLogin">LOGIN AKAUN (EMAIL)</button>
+
     <script src="cordova.js"></script>
     <script>
-        document.addEventListener('deviceready', function () {
-            document.getElementById('launchBtn').addEventListener('click', openChess);
-            openChess();
-        }, false);
+        let helperCode = "";
 
-        function openChess() {
-            const ref = cordova.InAppBrowser.open('https://www.chess.com/play/computer', '_blank', 'location=no,zoom=no,hardwareback=yes');
+        document.addEventListener('deviceready', function () {
             fetch('helper.js')
                 .then(r => r.text())
                 .then(code => {
-                    ref.addEventListener('loadstop', function () {
-                        ref.executeScript({ code: code });
-                    });
+                    helperCode = code;
+                    // Buka halaman utama secara automatik
+                    openChess('https://www.chess.com/home');
                 });
+
+            document.getElementById('btnHome').addEventListener('click', function () {
+                openChess('https://www.chess.com/home');
+            });
+            document.getElementById('btnComputer').addEventListener('click', function () {
+                openChess('https://www.chess.com/play/computer');
+            });
+            document.getElementById('btnLogin').addEventListener('click', function () {
+                openChess('https://www.chess.com/login');
+            });
+        }, false);
+
+        function openChess(targetUrl) {
+            const options = [
+                'location=no',
+                'zoom=no',
+                'hardwareback=yes',
+                'clearcache=no',
+                'clearsessioncache=no',
+                'domstorage=yes',
+                'mediaPlaybackRequiresUserAction=no',
+                'shouldPauseOnSuspend=yes'
+            ].join(',');
+
+            const ref = cordova.InAppBrowser.open(targetUrl, '_blank', options);
+
+            ref.addEventListener('loadstop', function () {
+                if (helperCode) {
+                    ref.executeScript({ code: helperCode });
+                }
+            });
         }
     </script>
 </body>
