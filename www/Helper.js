@@ -1,38 +1,49 @@
-/**
+﻿/**
  * Neon Chess Assistant & HUD (Optimized QoL & Gambit Edition)
  * Engine: Stockfish 10.0.2 (MultiPV evaluation + Opening Gambit Book)
  */
 
-(function () {
+function initNeonChessHelper() {
     'use strict';
 
-    if (document.getElementById('neon-hud-panel')) return;
+    if (window.__neonChessHelperActive) {
+        if (typeof window.__neonEnsureHUD === 'function') {
+            window.__neonEnsureHUD();
+        }
+        return;
+    }
+    window.__neonChessHelperActive = true;
 
-    // --- 1. PANGKALAN DATA GAMBIT (UCI MOVES) ---
+    // --- 1. OPENING GAMBIT DATABASE (UCI MOVES) ---
     const GAMBIT_BOOK = {
-        "none": { name: "Guna Stockfish Sahaja", color: "both", moves: [] },
-        "queens_gambit": { name: "👑 Queen's Gambit (Putih)", color: "w", moves: ["d2d4", "d7d5", "c2c4"] },
-        "kings_gambit": { name: "⚔️ King's Gambit (Putih)", color: "w", moves: ["e2e4", "e7e5", "f2f4"] },
-        "danish_gambit": { name: "💥 Danish Gambit (Putih)", color: "w", moves: ["e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "f1c4"] },
-        "evans_gambit": { name: "🎯 Evans Gambit (Putih)", color: "w", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4"] },
-        "vienna_gambit": { name: "⚡ Vienna Gambit (Putih)", color: "w", moves: ["e2e4", "e7e5", "b1c3", "g8f6", "f2f4"] },
-        "smith_morra": { name: "🔥 Smith-Morra vs Sicilian (Putih)", color: "w", moves: ["e2e4", "c7c5", "d2d4", "c5d4", "c2c3"] },
-        "stafford_gambit": { name: "💀 Stafford Gambit (Hitam)", color: "b", moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "b8c6", "e5c6", "d7c6"] },
-        "englund_gambit": { name: "🪤 Englund Gambit (Hitam)", color: "b", moves: ["d2d4", "e7e5", "d4e5", "b8c6", "g1f3", "d8e7"] },
-        "budapest_gambit": { name: "🏹 Budapest Gambit (Hitam)", color: "b", moves: ["d2d4", "g8f6", "c2c4", "e7e5"] },
-        "rousseau_gambit": { name: "🛡️ Rousseau Gambit (Hitam)", color: "b", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f7f5"] }
+        "none": { name: "Stockfish Engine Only", color: "both", moves: [] },
+        "queens_gambit": { name: "👑 Queen's Gambit (White)", color: "w", moves: ["d2d4", "d7d5", "c2c4"] },
+        "kings_gambit": { name: "⚔️ King's Gambit (White)", color: "w", moves: ["e2e4", "e7e5", "f2f4"] },
+        "danish_gambit": { name: "💥 Danish Gambit (White)", color: "w", moves: ["e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "f1c4"] },
+        "evans_gambit": { name: "🎯 Evans Gambit (White)", color: "w", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4"] },
+        "vienna_gambit": { name: "⚡ Vienna Gambit (White)", color: "w", moves: ["e2e4", "e7e5", "b1c3", "g8f6", "f2f4"] },
+        "smith_morra": { name: "🔥 Smith-Morra vs Sicilian (White)", color: "w", moves: ["e2e4", "c7c5", "d2d4", "c5d4", "c2c3"] },
+        "stafford_gambit": { name: "💀 Stafford Gambit (Black)", color: "b", moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "b8c6", "e5c6", "d7c6"] },
+        "englund_gambit": { name: "🪤 Englund Gambit (Black)", color: "b", moves: ["d2d4", "e7e5", "d4e5", "b8c6", "g1f3", "d8e7"] },
+        "budapest_gambit": { name: "🏹 Budapest Gambit (Black)", color: "b", moves: ["d2d4", "g8f6", "c2c4", "e7e5"] },
+        "rousseau_gambit": { name: "🛡️ Rousseau Gambit (Black)", color: "b", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f7f5"] }
     };
 
-    // --- 2. SYSTEM CONFIGURATION (DENGAN SIMPANAN LOCALSTORAGE) ---
+    // --- 2. SYSTEM CONFIGURATION (PERSISTED IN LOCALSTORAGE) ---
+    let storage = null;
+    try { storage = window.localStorage; } catch (e) {}
+    const getStore = (k) => { try { return storage ? storage.getItem(k) : null; } catch (e) { return null; } };
+    const setStore = (k, v) => { try { if (storage) storage.setItem(k, v); } catch (e) {} };
+
     const CONFIG = {
-        depth: parseInt(localStorage.getItem('nc_depth')) || 10,
+        depth: parseInt(getStore('nc_depth')) || 10,
         multiPV: 4,
-        autoMove: localStorage.getItem('nc_auto') === 'true',
-        delayMs: parseInt(localStorage.getItem('nc_delay')) || 1000,
-        selectedTier: parseInt(localStorage.getItem('nc_tier')) || 1,
-        selectedGambit: localStorage.getItem('nc_gambit') || 'none',
-        isMinimized: localStorage.getItem('nc_minimized') === 'true',
-        showArrows: localStorage.getItem('nc_arrows') !== 'false'
+        autoMove: getStore('nc_auto') === 'true',
+        delayMs: parseInt(getStore('nc_delay')) || 1000,
+        selectedTier: parseInt(getStore('nc_tier')) || 1,
+        selectedGambit: getStore('nc_gambit') || 'none',
+        isMinimized: getStore('nc_minimized') === 'true',
+        showArrows: getStore('nc_arrows') !== 'false'
     };
 
     let stockfish = null;
@@ -41,6 +52,7 @@
     let renderPending = false;
     let lastRenderTime = 0;
     let autoMoveTimer = null;
+    let focusListenerAttached = false;
 
     let currentAnalysis = {
         good: { move: "-", eval: "0.0", uci: "" },
@@ -51,192 +63,201 @@
 
     // --- 3. INJECT OPTIMIZED HUD STYLES & DOM ---
     function injectStylesAndHUD() {
-        const style = document.createElement('style');
-        style.innerHTML = `
-            #neon-hud-panel {
-                position: fixed;
-                bottom: 16px;
-                left: 16px;
-                width: 255px;
-                background: #080f16;
-                border: 1.5px solid #00f0ff;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
-                border-radius: 8px;
-                padding: 10px;
-                font-family: 'Courier New', Courier, monospace;
-                color: #e0faff;
-                z-index: 999999;
-                user-select: none;
-                touch-action: none;
-                will-change: transform;
-                transform: translate3d(0, 0, 0);
-            }
-            #neon-hud-panel.minimized {
-                width: auto;
-                padding: 6px 10px;
-                border-radius: 20px;
-            }
-            #neon-hud-panel.minimized #hud-body {
-                display: none !important;
-            }
-            #neon-hud-panel.minimized .hud-header {
-                border-bottom: none;
-                padding-bottom: 0;
-                margin-bottom: 0;
-                gap: 8px;
-            }
-            .hud-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-bottom: 1px solid rgba(0, 240, 255, 0.3);
-                padding-bottom: 6px;
-                margin-bottom: 8px;
-                font-size: 12px;
-                cursor: move;
-            }
-            .header-actions {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
-            .eval-badge {
-                border: 1px solid #00f0ff;
-                padding: 1px 6px;
-                color: #ffaa00;
-                font-weight: bold;
-                font-size: 12px;
-                background: rgba(0, 240, 255, 0.1);
-                border-radius: 3px;
-            }
-            .toggle-hud-btn {
-                background: #00f0ff;
-                color: #080f16;
-                border: none;
-                font-weight: bold;
-                font-size: 12px;
-                width: 22px;
-                height: 22px;
-                border-radius: 4px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .gambit-select {
-                width: 100%;
-                background: #0f1c29;
-                color: #00f0ff;
-                border: 1px solid rgba(0, 240, 255, 0.45);
-                padding: 5px;
-                font-size: 11px;
-                font-family: inherit;
-                border-radius: 4px;
-                margin-bottom: 8px;
-                outline: none;
-            }
-            .pwr-container {
-                margin-bottom: 8px;
-                font-size: 10px;
-            }
-            .pwr-labels {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 3px;
-                color: #88d8e6;
-            }
-            .pwr-bar-bg {
-                height: 5px;
-                background: #1a2c38;
-                border-radius: 2px;
-                overflow: hidden;
-            }
-            .pwr-bar-fill {
-                height: 100%;
-                background: #00f0ff;
-                transition: width 0.2s linear;
-            }
-            .move-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 5px 7px;
-                margin-bottom: 4px;
-                background: rgba(255, 255, 255, 0.04);
-                border-left: 3px solid transparent;
-                cursor: pointer;
-                font-size: 12px;
-            }
-            .move-row.active-tier {
-                background: rgba(0, 240, 255, 0.18);
-            }
-            .tier-good { border-left-color: #00f0ff; }
-            .tier-med  { border-left-color: #ffaa00; }
-            .tier-weak { border-left-color: #ff3366; }
+        if (!document.head || !document.body) return;
 
-            .diamond-icon {
-                display: inline-block;
-                width: 14px;
-                height: 14px;
-                line-height: 14px;
-                text-align: center;
-                font-size: 9px;
-                font-weight: bold;
-                margin-right: 8px;
-                border-radius: 2px;
-                color: #000;
-            }
-            .d-good { background: #00f0ff; }
-            .d-med  { background: #ffaa00; }
-            .d-weak { background: #ff3366; color: #fff; }
+        if (!document.getElementById('neon-hud-style')) {
+            const style = document.createElement('style');
+            style.id = 'neon-hud-style';
+            style.innerHTML = `
+                #neon-hud-panel {
+                    position: fixed;
+                    bottom: 16px;
+                    left: 16px;
+                    width: 255px;
+                    max-width: calc(100vw - 32px);
+                    box-sizing: border-box;
+                    background: #080f16;
+                    border: 1.5px solid #00f0ff;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.85);
+                    border-radius: 8px;
+                    padding: 10px;
+                    font-family: 'Courier New', Courier, monospace;
+                    color: #e0faff;
+                    z-index: 2147483647;
+                    user-select: none;
+                    touch-action: none;
+                    will-change: transform;
+                    transform: translate3d(0, 0, 0);
+                }
+                #neon-hud-panel.minimized {
+                    width: auto;
+                    padding: 6px 10px;
+                    border-radius: 20px;
+                }
+                #neon-hud-panel.minimized #hud-body {
+                    display: none !important;
+                }
+                #neon-hud-panel.minimized .hud-header {
+                    border-bottom: none;
+                    padding-bottom: 0;
+                    margin-bottom: 0;
+                    gap: 8px;
+                }
+                .hud-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-bottom: 1px solid rgba(0, 240, 255, 0.3);
+                    padding-bottom: 6px;
+                    margin-bottom: 8px;
+                    font-size: 12px;
+                    cursor: move;
+                }
+                .header-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .eval-badge {
+                    border: 1px solid #00f0ff;
+                    padding: 1px 6px;
+                    color: #ffaa00;
+                    font-weight: bold;
+                    font-size: 12px;
+                    background: rgba(0, 240, 255, 0.1);
+                    border-radius: 3px;
+                }
+                .toggle-hud-btn {
+                    background: #00f0ff;
+                    color: #080f16;
+                    border: none;
+                    font-weight: bold;
+                    font-size: 12px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .gambit-select {
+                    width: 100%;
+                    background: #0f1c29;
+                    color: #00f0ff;
+                    border: 1px solid rgba(0, 240, 255, 0.45);
+                    padding: 5px;
+                    font-size: 11px;
+                    font-family: inherit;
+                    border-radius: 4px;
+                    margin-bottom: 8px;
+                    outline: none;
+                }
+                .pwr-container {
+                    margin-bottom: 8px;
+                    font-size: 10px;
+                }
+                .pwr-labels {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 3px;
+                    color: #88d8e6;
+                }
+                .pwr-bar-bg {
+                    height: 5px;
+                    background: #1a2c38;
+                    border-radius: 2px;
+                    overflow: hidden;
+                }
+                .pwr-bar-fill {
+                    height: 100%;
+                    background: #00f0ff;
+                    transition: width 0.2s linear;
+                }
+                .move-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 5px 7px;
+                    margin-bottom: 4px;
+                    background: rgba(255, 255, 255, 0.04);
+                    border-left: 3px solid transparent;
+                    cursor: pointer;
+                    font-size: 12px;
+                }
+                .move-row.active-tier {
+                    background: rgba(0, 240, 255, 0.18);
+                }
+                .tier-good { border-left-color: #00f0ff; }
+                .tier-med  { border-left-color: #ffaa00; }
+                .tier-weak { border-left-color: #ff3366; }
 
-            .move-san { font-weight: bold; color: #fff; flex-grow: 1; }
-            .move-label { font-size: 9px; color: #88c0d0; margin-right: 6px; }
-            .move-score { font-weight: bold; font-size: 11px; }
-            .score-good { color: #00f0ff; }
-            .score-med  { color: #7cfc00; }
-            .score-weak { color: #ff5555; }
+                .diamond-icon {
+                    display: inline-block;
+                    width: 14px;
+                    height: 14px;
+                    line-height: 14px;
+                    text-align: center;
+                    font-size: 9px;
+                    font-weight: bold;
+                    margin-right: 8px;
+                    border-radius: 2px;
+                    color: #000;
+                }
+                .d-good { background: #00f0ff; }
+                .d-med  { background: #ffaa00; }
+                .d-weak { background: #ff3366; color: #fff; }
 
-            .hud-controls {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 4px;
-                margin-top: 6px;
-            }
-            .hud-controls-bottom {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 4px;
-                margin-top: 4px;
-            }
-            .hud-btn {
-                background: rgba(0, 240, 255, 0.06);
-                border: 1px solid rgba(0, 240, 255, 0.4);
-                color: #aaddff;
-                padding: 5px 2px;
-                font-size: 10px;
-                font-family: inherit;
-                text-align: center;
-                cursor: pointer;
-                border-radius: 3px;
-            }
-            .hud-btn.active {
-                background: rgba(0, 240, 255, 0.28);
-                color: #fff;
-                border-color: #00f0ff;
-                font-weight: bold;
-            }
-            #neon-svg-overlay {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: none;
-                z-index: 100;
-            }
-        `;
-        document.head.appendChild(style);
+                .move-san { font-weight: bold; color: #fff; flex-grow: 1; }
+                .move-label { font-size: 9px; color: #88c0d0; margin-right: 6px; }
+                .move-score { font-weight: bold; font-size: 11px; }
+                .score-good { color: #00f0ff; }
+                .score-med  { color: #7cfc00; }
+                .score-weak { color: #ff5555; }
+
+                .hud-controls {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    gap: 4px;
+                    margin-top: 6px;
+                }
+                .hud-controls-bottom {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    gap: 4px;
+                    margin-top: 4px;
+                }
+                .hud-btn {
+                    background: rgba(0, 240, 255, 0.06);
+                    border: 1px solid rgba(0, 240, 255, 0.4);
+                    color: #aaddff;
+                    padding: 5px 2px;
+                    font-size: 10px;
+                    font-family: inherit;
+                    text-align: center;
+                    cursor: pointer;
+                    border-radius: 3px;
+                }
+                .hud-btn.active {
+                    background: rgba(0, 240, 255, 0.28);
+                    color: #fff;
+                    border-color: #00f0ff;
+                    font-weight: bold;
+                }
+                #neon-svg-overlay {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    pointer-events: none;
+                    z-index: 100;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        if (document.getElementById('neon-hud-panel')) return;
 
         const gambitOptionsHtml = Object.entries(GAMBIT_BOOK).map(([key, item]) =>
             `<option value="${key}" ${CONFIG.selectedGambit === key ? 'selected' : ''}>${item.name}</option>`
@@ -251,7 +272,7 @@
                 <span>⚡ <b id="hud-mode-text">NEON</b></span>
                 <div class="header-actions">
                     <span class="eval-badge" id="hud-main-eval">0.0</span>
-                    <button class="toggle-hud-btn" id="btn-minimize" title="Tutup / Buka UI">${CONFIG.isMinimized ? '+' : '—'}</button>
+                    <button class="toggle-hud-btn" id="btn-minimize" title="Minimize / Expand UI">${CONFIG.isMinimized ? '+' : '—'}</button>
                 </div>
             </div>
 
@@ -263,7 +284,7 @@
                 <div class="pwr-container">
                     <div class="pwr-labels">
                         <span id="pwr-win">50%</span>
-                        <span id="turn-indicator">MENUNGGU PAPAN</span>
+                        <span id="turn-indicator">WAITING FOR BOARD</span>
                         <span id="pwr-loss">50%</span>
                     </div>
                     <div class="pwr-bar-bg">
@@ -307,16 +328,22 @@
         document.body.appendChild(hud);
 
         setupHUDInteractions(hud);
+        scheduleRender(true);
     }
+
+    window.__neonEnsureHUD = injectStylesAndHUD;
 
     // --- 4. HUD INTERACTIONS & GPU-ACCELERATED DRAG ---
     function setupHUDInteractions(hud) {
         const tierNames = ["GOOD", "MED", "WEAK"];
 
         [1, 2, 3].forEach(t => {
-            document.getElementById(`row-tier-${t}`).addEventListener('click', () => {
-                selectTier(t, tierNames[t - 1]);
-            });
+            const row = document.getElementById(`row-tier-${t}`);
+            if (row) {
+                row.addEventListener('click', () => {
+                    selectTier(t, tierNames[t - 1]);
+                });
+            }
         });
 
         document.getElementById('btn-rank').addEventListener('click', () => {
@@ -326,35 +353,36 @@
 
         function selectTier(tier, name) {
             CONFIG.selectedTier = tier;
-            localStorage.setItem('nc_tier', tier);
+            setStore('nc_tier', tier);
             document.querySelectorAll('.move-row').forEach(el => el.classList.remove('active-tier'));
-            document.getElementById(`row-tier-${tier}`).classList.add('active-tier');
+            const activeRow = document.getElementById(`row-tier-${tier}`);
+            if (activeRow) activeRow.classList.add('active-tier');
             document.getElementById('btn-rank').innerText = `TIER: ${tier}`;
             document.getElementById('hud-mode-text').innerText = name;
-            scheduleRender();
+            scheduleRender(true);
         }
 
-        // Toggle Minimize / Buka-Tutup UI
+        // Toggle Minimize / Expand UI
         const minBtn = document.getElementById('btn-minimize');
         minBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             CONFIG.isMinimized = !CONFIG.isMinimized;
-            localStorage.setItem('nc_minimized', CONFIG.isMinimized);
+            setStore('nc_minimized', CONFIG.isMinimized);
             hud.classList.toggle('minimized', CONFIG.isMinimized);
             minBtn.innerText = CONFIG.isMinimized ? '+' : '—';
         });
 
-        // Pilihan Gambit
+        // Gambit Selection
         document.getElementById('select-gambit').addEventListener('change', (e) => {
             CONFIG.selectedGambit = e.target.value;
-            localStorage.setItem('nc_gambit', CONFIG.selectedGambit);
+            setStore('nc_gambit', CONFIG.selectedGambit);
             analyzeCurrentBoard(true);
         });
 
         // Auto Move Toggle
         document.getElementById('btn-auto').addEventListener('click', (e) => {
             CONFIG.autoMove = !CONFIG.autoMove;
-            localStorage.setItem('nc_auto', CONFIG.autoMove);
+            setStore('nc_auto', CONFIG.autoMove);
             e.target.innerText = `AUTO: ${CONFIG.autoMove ? 'ON' : 'OFF'}`;
             e.target.classList.toggle('active', CONFIG.autoMove);
             if (CONFIG.autoMove) triggerAutoMoveIfMyTurn();
@@ -365,7 +393,7 @@
             const delays = [300, 800, 1500, 2500];
             let idx = (delays.indexOf(CONFIG.delayMs) + 1) % delays.length;
             CONFIG.delayMs = delays[idx];
-            localStorage.setItem('nc_delay', CONFIG.delayMs);
+            setStore('nc_delay', CONFIG.delayMs);
             e.target.innerText = `${(CONFIG.delayMs / 1000).toFixed(1)}S`;
         });
 
@@ -374,7 +402,7 @@
             const depths = [8, 10, 13, 16];
             let idx = (depths.indexOf(CONFIG.depth) + 1) % depths.length;
             CONFIG.depth = depths[idx];
-            localStorage.setItem('nc_depth', CONFIG.depth);
+            setStore('nc_depth', CONFIG.depth);
             e.target.innerText = `D:${CONFIG.depth}`;
             analyzeCurrentBoard(true);
         });
@@ -382,24 +410,29 @@
         // Arrow Toggle (QoL)
         document.getElementById('btn-arrows').addEventListener('click', (e) => {
             CONFIG.showArrows = !CONFIG.showArrows;
-            localStorage.setItem('nc_arrows', CONFIG.showArrows);
+            setStore('nc_arrows', CONFIG.showArrows);
             e.target.classList.toggle('active', CONFIG.showArrows);
-            scheduleRender();
+            scheduleRender(true);
         });
 
         document.getElementById('btn-force').addEventListener('click', () => {
             analyzeCurrentBoard(true);
         });
 
-        // Auto-minimize bila fokus pada input email/password supaya tak ganggu papan kekunci
-        document.addEventListener('focusin', (e) => {
-            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-                hud.classList.add('minimized');
-                minBtn.innerText = '+';
-            }
-        });
+        // Auto-minimize when focusing on email/password inputs so the keyboard isn't blocked
+        if (!focusListenerAttached) {
+            focusListenerAttached = true;
+            document.addEventListener('focusin', (e) => {
+                const panel = document.getElementById('neon-hud-panel');
+                const btn = document.getElementById('btn-minimize');
+                if (panel && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+                    panel.classList.add('minimized');
+                    if (btn) btn.innerText = '+';
+                }
+            });
+        }
 
-        // GPU-Accelerated Dragging (Tiada Layout Thrashing)
+        // GPU-Accelerated Dragging (No Layout Thrashing)
         const handle = document.getElementById('hud-drag-handle');
         let isDragging = false, startX = 0, startY = 0, currentX = 0, currentY = 0, offsetX = 0, offsetY = 0;
 
@@ -437,7 +470,8 @@
         try {
             const workerUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
             const response = await fetch(workerUrl);
-            const scriptBlob = await response.blob();
+            const scriptText = await response.text();
+            const scriptBlob = new Blob([scriptText], { type: 'application/javascript' });
             stockfish = new Worker(URL.createObjectURL(scriptBlob));
 
             stockfish.onmessage = function (event) {
@@ -445,7 +479,7 @@
                 if (!line) return;
 
                 if (line.startsWith('info depth') && line.includes(' multipv ')) {
-                    if (currentAnalysis.isBookMove) return; // Abaikan jika sedang guna langkah Gambit
+                    if (currentAnalysis.isBookMove) return; // Ignore if currently using a Gambit book move
 
                     const multipvMatch = line.match(/multipv (\d+)/);
                     const scoreMatch = line.match(/score (cp|mate) (-?\d+)/);
@@ -479,11 +513,11 @@
             stockfish.postMessage(`setoption name MultiPV value ${CONFIG.multiPV}`);
             stockfish.postMessage('isready');
         } catch (err) {
-            console.error('Gagal muatkan Stockfish:', err);
+            console.error('Failed to load Stockfish:', err);
         }
     }
 
-    // Elak UI lag dengan mengehadkan kemas kini DOM maksimum sekali setiap 120ms
+    // Prevent UI lag by throttling DOM updates to at most once every 120ms
     function scheduleRender(forceImmediate = false) {
         const now = performance.now();
         if (!forceImmediate && (renderPending || now - lastRenderTime < 120)) return;
@@ -498,10 +532,13 @@
     }
 
     function updateAnalysisTiers() {
+        const move1San = document.getElementById('move-1-san');
+        if (!move1San) return;
+
         if (!currentAnalysis.isBookMove) {
             if (pvData[1]) {
                 currentAnalysis.good = pvData[1];
-                document.getElementById('move-1-san').innerText = formatUciToReadable(pvData[1].uci);
+                move1San.innerText = formatUciToReadable(pvData[1].uci);
                 document.getElementById('move-1-label').innerText = 'GOOD';
                 document.getElementById('move-1-eval').innerText = pvData[1].eval;
                 document.getElementById('hud-main-eval').innerText = pvData[1].eval;
@@ -526,7 +563,7 @@
                 document.getElementById('move-3-eval').innerText = weakSource.eval;
             }
         } else {
-            document.getElementById('move-1-san').innerText = formatUciToReadable(currentAnalysis.good.uci);
+            move1San.innerText = formatUciToReadable(currentAnalysis.good.uci);
             document.getElementById('move-1-label').innerText = 'GAMBIT';
             document.getElementById('move-1-eval').innerText = 'BOOK';
             document.getElementById('hud-main-eval').innerText = 'BOOK';
@@ -564,12 +601,12 @@
 
         if (halfMoveIndex >= gambit.moves.length) return null;
 
-        // Semak sejarah langkah jika tersedia supaya pastikan lawan ikut urutan pembukaan
+        // Check move history if available to ensure opponent follows the opening line
         const historyUci = getMoveHistoryUci(board);
         if (historyUci.length === halfMoveIndex) {
             for (let i = 0; i < historyUci.length; i++) {
                 if (historyUci[i] && historyUci[i] !== gambit.moves[i]) {
-                    return null; // Lawan buat langkah lain, tukar ke Stockfish
+                    return null; // Opponent deviated, switch to Stockfish
                 }
             }
         }
@@ -578,6 +615,10 @@
     }
 
     function analyzeCurrentBoard(force = false) {
+        if (!document.getElementById('neon-hud-panel')) {
+            injectStylesAndHUD();
+        }
+
         const board = getBoardElement();
         if (!board || !board.game) return;
 
@@ -587,12 +628,12 @@
         lastFen = currentFen;
         pvData = {};
 
-        // Kemas kini penunjuk giliran
-        const turnColor = currentFen.split(' ')[1] === 'b' ? 'HITAM' : 'PUTIH';
+        // Update turn indicator
+        const turnColor = currentFen.split(' ')[1] === 'b' ? 'BLACK' : 'WHITE';
         const turnEl = document.getElementById('turn-indicator');
-        if (turnEl) turnEl.innerText = `GILIRAN: ${turnColor}`;
+        if (turnEl) turnEl.innerText = `TURN: ${turnColor}`;
 
-        // 1. Semak sama ada langkah dalam buku Gambit
+        // 1. Check if move is in the Gambit book
         const gambitUci = checkGambitMove(board, currentFen);
         if (gambitUci) {
             currentAnalysis.isBookMove = true;
@@ -604,7 +645,7 @@
             return;
         }
 
-        // 2. Jika luar buku Gambit, guna Stockfish
+        // 2. If out of book, use Stockfish
         currentAnalysis.isBookMove = false;
         if (stockfish) {
             stockfish.postMessage('stop');
@@ -650,7 +691,7 @@
         }, CONFIG.delayMs);
     }
 
-    // --- 7. LIGHTWEIGHT SVG OVERLAY (TIADA GAUSSIAN BLUR LAG) ---
+    // --- 7. LIGHTWEIGHT SVG OVERLAY (NO GAUSSIAN BLUR LAG) ---
     function drawBoardArrows() {
         const board = getBoardElement();
         if (!board) return;
@@ -718,9 +759,20 @@
     }
 
     // --- 8. INITIALIZE ---
-    setTimeout(() => {
+    function startHelper() {
         injectStylesAndHUD();
         initStockfish();
         setInterval(() => analyzeCurrentBoard(false), 500);
-    }, 1000);
-})();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(startHelper, 300));
+    } else {
+        setTimeout(startHelper, 300);
+    }
+}
+
+window.initNeonChessHelper = initNeonChessHelper;
+if (typeof window !== 'undefined' && window.location && /chess\.com/i.test(window.location.hostname)) {
+    initNeonChessHelper();
+}

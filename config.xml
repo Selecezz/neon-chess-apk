@@ -1,11 +1,11 @@
-<?xml version='1.0' encoding='utf-8'?>
+﻿<?xml version='1.0' encoding='utf-8'?>
 <widget id="com.neon.chesshelper" version="1.1.0" xmlns="http://www.w3.org/ns/widgets">
     <name>Neon Chess</name>
     <description>Chess Assistant WebView</description>
     <author email="dev@local">Developer</author>
     <content src="index.html" />
     
-    <!-- Benarkan navigasi penuh untuk pengesahan login / Cloudflare -->
+    <!-- Allow full navigation for login authentication / Cloudflare -->
     <allow-navigation href="*" />
     <access origin="*" />
     
@@ -13,6 +13,6 @@
     <preference name="Orientation" value="portrait" />
     <preference name="AndroidPersistentFileLocation" value="Compatibility" />
     
-    <!-- Penting: Hilangkan tanda '; wv' supaya Chess.com tidak sekat login email -->
+    <!-- Remove '; wv' marker so Chess.com does not block email login -->
     <preference name="OverrideUserAgent" value="Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36" />
 </widget>
