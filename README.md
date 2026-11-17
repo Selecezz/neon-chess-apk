@@ -1,118 +1,89 @@
-NEON CHESS PRO
+# NEON CHESS PRO
 
-Cyberpunk Chess Assistant & Opening Gambit Trainer for Android
+Cyberpunk Chess Assistant & Smart Auto-Gambit Trainer for Android
 
-Neon Chess Pro is a lightweight Android WebView wrapper injected with a hardware-accelerated HUD overlay. Powered by a multi-threaded Stockfish WebWorker and a built-in Opening Gambit Book, it provides real-time position evaluation, multi-tier move candidates, and SVG board trajectories without dropping frames.
+Neon Chess Pro is a lightweight Android WebView wrapper injected with a hardware-accelerated HUD overlay. Powered by a multi-threaded Stockfish WebWorker, a built-in FEN/SAN legal-move engine, and a Smart Auto-Gambit Book, it provides real-time position evaluation, blunder-guarded multi-tier candidates, and crisp SVG board arrows without dropping frames.
 
-Key Features
+## Key Features
 
-1. 3-Tier Engine Analysis (Multi-PV)
+### 1. Smart Auto-Gambit (Default Match Mode)
+- **`⚡ AUTO GAMBIT (Best for Match)`**: Selected by default in the **Choose Gambit** selector. Automatically detects whether you are playing White or Black, tracks the opponent's replies via FEN-transposition matching, and verifies candidate gambits against Stockfish so it only plays sound lines (and switches to engine consolidation when you are already winning or if a line drops too much eval).
+- **Manual Override**: You can also choose **`🧠 Stockfish Engine Only`** or lock a specific White/Black opening line:
+  - **White Repertoire**: Queen's Gambit, Vienna Gambit, Scotch Gambit, Evans Gambit, Smith-Morra Gambit, Milner-Barry Gambit, King's Gambit, Danish Gambit.
+  - **Black Repertoire**: Benko Gambit, Budapest Gambit, Jaenisch Gambit, Albin Countergambit, Icelandic Gambit, Rousseau Gambit, Stafford Gambit, Englund Gambit.
 
-Uses the Stockfish WebWorker engine to compute top candidate moves simultaneously and categorizes them into three distinct playstyles:
+### 2. 3-Tier Engine Analysis (Multi-PV + Blunder Guard)
+Uses the Stockfish WebWorker engine (`readyok`-synchronized) to compute top candidate moves simultaneously in clean SAN + coordinate notation:
+- **TIER 1 (`BEST` / `GAMBIT` - Cyan / Gold)**: The optimal engine line or verified match gambit.
+- **TIER 2 (`MED` - Amber)**: A natural 2nd-best alternative protected by a centipawn blunder guard.
+- **TIER 3 (`SAFE` - Crimson)**: A lower-pressure alternative that still avoids blunders and mate traps.
 
-TIER 1 (GOOD - Cyan): The optimal engine line.
+### 3. Performance & Quality of Life (QoL)
+- **GPU-Accelerated & Viewport-Clamped Dragging**: Uses `transform: translate3d` dragging clamped inside the screen bounds and persisted across sessions.
+- **Instant Board Observer**: Uses a `MutationObserver` on the chessboard (with 500ms fallback) plus `requestAnimationFrame` throttling for near-instant reaction.
+- **1-Tap Execution (`▶`) & Stabilized Win Bar**: Tap `▶` on any move row to play it immediately on your turn; the `YOU vs OPP` bar stays oriented to your color using a chess WDL sigmoid curve.
+- **Collapsible Compact Pill (`[—]` / `[+]`)**: Minimizes into a floating pill displaying the top move and eval; auto-collapses when typing into input fields.
+- **Persistent Settings**: Saves Depth, Tier, Auto-Move, Delay, Arrow visibility, HUD position, and Gambit selection via `localStorage`.
 
-TIER 2 (MED - Amber): The 2nd or 3rd best candidate move for more natural play.
+## HUD Controls & Layout
 
-TIER 3 (WEAK - Crimson): Solid, lower-pressure alternatives that still avoid blunders.
+```
++----------------------------------------------+
+| ● ⚡ NEON [W]              [ +0.4 ]  [ — ]   |  <-- Drag Handle / Status / Minimize
++----------------------------------------------+
+| CHOOSE GAMBIT                   SMART MATCH  |
+| [ ⚡ AUTO GAMBIT (Best for Match)        ▼ ] |  <-- Auto / Engine / Manual Gambit
+| MATCHED: 👑 Queen's Gambit                   |  <-- Live Gambit Match Banner
+| YOU 55%        [ YOUR TURN ]         45% OPP |
+| [█████████████████████░░░░░░░░░░░░░░░░░░░░░] |  <-- Stabilized Win Probability Bar
+|                                              |
+| [1] ♙ c4    c2→c4       GAMBIT  +0.4    [▶] |  <-- Tap row for Tier, ▶ to play
+| [2] ♘ Nf3   g1→f3       MED     +0.3    [▶] |
+| [3] ♙ e3    e2→e3       SAFE    +0.1    [▶] |
+|                                              |
+| [ AUTO: OFF ]   [  1.0S  ]   [  TIER: 1  ]   |
+| [   SCAN    ]   [  D:10  ]   [   ARROW   ]   |
++----------------------------------------------+
+```
 
-2. Built-In Opening Gambit Book
+| Control | Description |
+| :--- | :--- |
+| `[ — ] / [ + ]` | Minimize to a compact move-preview pill or expand the HUD panel. |
+| `CHOOSE GAMBIT` | Defaults to `⚡ AUTO GAMBIT (Best for Match)`; also supports Engine Only or manual lines. |
+| `▶` (Row Button) | Immediately plays that candidate move on your turn. |
+| `AUTO: ON/OFF` | Automatically executes the selected Tier or verified Gambit move on your turn. |
+| `0.3S - 2.5S` | Cycles the delay (`0.3s`, `0.6s`, `1.0s`, `1.5s`, `2.5s`) before auto-move execution. |
+| `TIER: 1/2/3` | Switches the primary target arrow and Auto-Move between Best, Med, or Safe. |
+| `SCAN` | Forces an immediate re-scan (and retries loading Stockfish if offline). |
+| `D:8 - D:16` | Cycles the Stockfish search depth (Depth 8, 10, 13, 16). |
+| `ARROW` | Toggles the crisp SVG trajectory arrows on the chessboard. |
 
-Select opening lines directly from the HUD dropdown menu. The script tracks move history and opponent responses, feeding book moves before seamlessly handing control back to Stockfish once out of book:
+## Project Structure
 
-White Repertoire: Queen's Gambit, King's Gambit, Danish Gambit, Evans Gambit, Vienna Gambit, Smith-Morra Gambit.
-
-Black Repertoire: Stafford Gambit, Englund Gambit, Budapest Gambit, Rousseau Gambit.
-
-3. Performance & Quality of Life (QoL)
-
-GPU-Accelerated Rendering: Built with transform: translate3d dragging and requestAnimationFrame throttling (120ms cap) to eliminate UI lag and layout thrashing.
-
-Collapsible Interface ([—] / [+]): Minimize the HUD into a compact floating pill at any time. Automatically collapses when typing into input fields so your keyboard is never obstructed.
-
-Email & Session Login Support: Configured with a custom Chrome Mobile OverrideUserAgent and persistent DOM storage/cookies to prevent WebView login blocks.
-
-Persistent Settings: Saves your preferred Depth, Tier, Auto-Move, Delay, and Gambit choices across sessions via localStorage.
-
-HUD Controls & Layout
-
-+------------------------------------------+
-| NEON                     [+1.4]  [ — ]   |  <-- Drag Handle / Minimize UI
-+------------------------------------------+
-| [ Queen's Gambit (White)             ▼ ] |  <-- Opening Gambit Selector
-| 65%           TURN: WHITE            35% |
-| [████████████████████░░░░░░░░░░░░░░░░░░] |  <-- Live Win Probability Bar
-|                                          |
-| [1] e2 -> e4            GOOD       +1.4  |  <-- Tap row to switch active Tier
-| [2] d2 -> d4            MED        +0.9  |
-| [3] g1 -> f3            WEAK       +0.3  |
-|                                          |
-| [ AUTO: OFF ]  [  1.0S  ]  [  TIER: 1  ] |
-| [   SCAN    ]  [  D:10  ]  [   ARROW   ] |
-+------------------------------------------+
-
-
-Control
-
-Description
-
-[ — ] / [ + ]
-
-Minimize or expand the main HUD panel.
-
-AUTO: ON/OFF
-
-Automatically executes the selected Tier or Gambit move on your turn.
-
-0.3S - 2.5S
-
-Cycles the delay timer before an automatic move is executed.
-
-TIER: 1/2/3
-
-Switches the primary target arrow and Auto-Move between Good, Med, or Weak.
-
-SCAN
-
-Forces an immediate re-scan and evaluation of the current board position.
-
-D:8 - D:16
-
-Cycles the Stockfish search depth (Depth 8, 10, 13, 16).
-
-ARROW
-
-Toggles the SVG trajectory arrows on the chessboard.
-
-Project Structure
-
+```
 neon-chess-apk/
 ├── .github/
 │   └── workflows/
 │       └── build.yml       # Automated GitHub Actions APK build pipeline
 ├── www/
-│   ├── index.html          # Launcher (Online Home, vs Computer, & Email Login)
-│   └── helper.js           # Stockfish Worker, Gambit Book & HUD Overlay
+│   ├── index.html          # Launcher (Live Chess, Home, vs Computer, & Email Login)
+│   └── Helper.js           # Stockfish Worker, FEN/SAN Engine, Auto-Gambit & HUD Overlay
 ├── config.xml              # Cordova config & Custom Chrome User-Agent
 └── README.md               # Documentation
+```
 
+## Build Instructions
 
-Build Instructions
+### Automated Build (GitHub Actions)
+1. Fork or push this repository to your GitHub account.
+2. Open the **Actions** tab in your repository.
+3. Select **Build Android APK** and click **Run workflow** (or push a commit to `main`).
+4. Download the `NeonChessHelper-APK` archive from the **Artifacts** section once the build completes.
 
-Automated Build (GitHub Actions)
-
-Fork or push this repository to your GitHub account.
-
-Open the Actions tab in your repository.
-
-Select Build Android APK and click Run workflow (or push a commit to main).
-
-Download the NeonChessHelper-APK archive from the Artifacts section once the build completes.
-
-Local CLI Build
-
+### Local CLI Build
 Requires Node.js (v22+), JDK 17, and Android SDK (API 34).
 
+```bash
 # Install Cordova globally
 npm install -g cordova
 
@@ -122,11 +93,10 @@ cordova plugin add cordova-plugin-inappbrowser
 
 # Compile Debug APK
 cordova build android --debug -- --packageType=apk
-
+```
 
 The output APK will be located at:
-platforms/android/app/build/outputs/apk/debug/app-debug.apk
+`platforms/android/app/build/outputs/apk/debug/app-debug.apk`
 
-Disclaimer
-
+## Disclaimer
 This project is intended strictly for educational purposes, WebWorker engine integration testing, and opening repertoire practice. Using real-time engine assistance during rated online games violates platform Fair Play policies. Use responsibly in offline or computer training modes.
