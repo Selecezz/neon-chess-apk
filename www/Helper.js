@@ -622,9 +622,23 @@ function initNeonChessHelper() {
         savedGambit = 'auto';
     }
 
+    const ELO_LEVELS = [400, 800, 1500, 2000, 2500];
+    const ELO_PROFILES = {
+        400:  { skill: 1,  depth: 3,  multiPV: 6, maxBookPly: 0,  targetDropCp: 220, maxDropCp: 420, label: 'BEGINNER' },
+        800:  { skill: 5,  depth: 5,  multiPV: 5, maxBookPly: 3,  targetDropCp: 110, maxDropCp: 240, label: 'NOVICE' },
+        1500: { skill: 11, depth: 8,  multiPV: 4, maxBookPly: 6,  targetDropCp: 35,  maxDropCp: 90,  label: 'CLUB' },
+        2000: { skill: 16, depth: 12, multiPV: 4, maxBookPly: 99, targetDropCp: 0,   maxDropCp: 35,  label: 'EXPERT' },
+        2500: { skill: 20, depth: 15, multiPV: 4, maxBookPly: 99, targetDropCp: 0,   maxDropCp: 0,   label: 'GRANDMASTER' }
+    };
+
+    const savedElo = parseInt(getStore('nc_elo'), 10);
+    const initialElo = ELO_LEVELS.includes(savedElo) ? savedElo : 2500;
+    const initialProfile = ELO_PROFILES[initialElo];
+
     const CONFIG = {
-        depth: parseInt(getStore('nc_depth'), 10) || 10,
-        multiPV: 4,
+        elo: initialElo,
+        depth: parseInt(getStore('nc_depth'), 10) || initialProfile.depth,
+        multiPV: initialProfile.multiPV,
         autoMove: getStore('nc_auto') === 'true',
         delayMs: parseInt(getStore('nc_delay'), 10) || 1000,
         selectedTier: parseInt(getStore('nc_tier'), 10) || 1,
@@ -858,12 +872,69 @@ function initNeonChessHelper() {
                     justify-content: center;
                     line-height: 1;
                 }
-                .gambit-box {
+                .gambit-box, .elo-box {
                     background: rgba(12, 24, 38, 0.9);
                     border: 1px solid rgba(0, 240, 255, 0.25);
                     border-radius: 6px;
                     padding: 5px 6px;
                     margin-bottom: 7px;
+                }
+                .elo-label-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 9px;
+                    letter-spacing: 0.6px;
+                    color: #7cc6d6;
+                    margin-bottom: 3px;
+                    font-weight: 700;
+                }
+                .elo-val-badge {
+                    color: #00f59b;
+                    font-weight: 800;
+                    font-size: 10px;
+                    font-variant-numeric: tabular-nums;
+                }
+                .elo-slider {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 100%;
+                    height: 6px;
+                    margin: 4px 0 3px;
+                    border-radius: 3px;
+                    background: linear-gradient(90deg, #ff5577 0%, #ffaa00 45%, #00f59b 75%, #00f0ff 100%);
+                    outline: none;
+                    cursor: pointer;
+                    touch-action: pan-x;
+                }
+                .elo-slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 15px;
+                    height: 15px;
+                    border-radius: 50%;
+                    background: #070e17;
+                    border: 2px solid #00f0ff;
+                    box-shadow: 0 0 6px rgba(0, 240, 255, 0.85);
+                    cursor: pointer;
+                }
+                .elo-ticks {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 9px;
+                    font-weight: 700;
+                    color: #6b93a4;
+                    font-variant-numeric: tabular-nums;
+                }
+                .elo-tick {
+                    cursor: pointer;
+                    padding: 1px 3px;
+                    border-radius: 3px;
+                }
+                .elo-tick.active {
+                    color: #00f0ff;
+                    background: rgba(0, 240, 255, 0.16);
+                    font-weight: 800;
                 }
                 .gambit-label-row {
                     display: flex;
@@ -1124,6 +1195,17 @@ function initNeonChessHelper() {
             </div>
 
             <div id="hud-body">
+                <div class="elo-box">
+                    <div class="elo-label-row">
+                        <span>GUIDE STRENGTH (SLIDE ELO)</span>
+                        <span class="elo-val-badge" id="elo-val-badge">${CONFIG.elo} ELO · ${(ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500]).label}</span>
+                    </div>
+                    <input type="range" class="elo-slider" id="elo-slider" min="0" max="${ELO_LEVELS.length - 1}" step="1" value="${Math.max(0, ELO_LEVELS.indexOf(CONFIG.elo))}">
+                    <div class="elo-ticks" id="elo-ticks">
+                        ${ELO_LEVELS.map((e, idx) => `<span class="elo-tick ${CONFIG.elo === e ? 'active' : ''}" data-elo-idx="${idx}">${e}</span>`).join('')}
+                    </div>
+                </div>
+
                 <div class="gambit-box">
                     <div class="gambit-label-row">
                         <span>CHOOSE GAMBIT</span>
@@ -1258,6 +1340,40 @@ function initNeonChessHelper() {
             clampHudPosition();
         });
 
+        // ELO Slider & Tick Selection
+        const eloSlider = document.getElementById('elo-slider');
+        const applyEloByIndex = (rawIdx) => {
+            const idx = Math.max(0, Math.min(ELO_LEVELS.length - 1, parseInt(rawIdx, 10) || 0));
+            const newElo = ELO_LEVELS[idx];
+            const profile = ELO_PROFILES[newElo] || ELO_PROFILES[2500];
+            CONFIG.elo = newElo;
+            CONFIG.depth = profile.depth;
+            CONFIG.multiPV = profile.multiPV;
+            setStore('nc_elo', newElo);
+            setStore('nc_depth', CONFIG.depth);
+
+            if (eloSlider) eloSlider.value = String(idx);
+            const badge = document.getElementById('elo-val-badge');
+            if (badge) badge.innerText = `${newElo} ELO · ${profile.label}`;
+            const depthBtn = document.getElementById('btn-depth');
+            if (depthBtn) depthBtn.innerText = `D:${CONFIG.depth}`;
+            hud.querySelectorAll('.elo-tick').forEach((el, i) => el.classList.toggle('active', i === idx));
+
+            if (stockfish) {
+                stockfish.postMessage(`setoption name Skill Level value ${profile.skill}`);
+                stockfish.postMessage(`setoption name MultiPV value ${profile.multiPV}`);
+            }
+            analyzeCurrentBoard(true);
+        };
+
+        if (eloSlider) {
+            eloSlider.addEventListener('input', (e) => applyEloByIndex(e.target.value));
+            eloSlider.addEventListener('change', (e) => applyEloByIndex(e.target.value));
+        }
+        hud.querySelectorAll('.elo-tick').forEach((tickEl) => {
+            tickEl.addEventListener('click', () => applyEloByIndex(tickEl.getAttribute('data-elo-idx')));
+        });
+
         // Gambit Selection
         document.getElementById('select-gambit').addEventListener('change', (e) => {
             CONFIG.selectedGambit = e.target.value;
@@ -1320,13 +1436,13 @@ function initNeonChessHelper() {
             analyzeCurrentBoard(true);
         });
 
-        // Auto-minimize when focusing on email/password inputs
+        // Auto-minimize when focusing on external email/password inputs (ignore inputs inside HUD)
         if (!focusListenerAttached) {
             focusListenerAttached = true;
             document.addEventListener('focusin', (e) => {
                 const panel = document.getElementById('neon-hud-panel');
                 const btn = document.getElementById('btn-minimize');
-                if (panel && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+                if (panel && e.target && !panel.contains(e.target) && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
                     panel.classList.add('minimized');
                     if (btn) btn.innerText = '+';
                 }
@@ -1497,8 +1613,10 @@ function initNeonChessHelper() {
                 }
             };
 
+            const curProfile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
             stockfish.postMessage('uci');
             stockfish.postMessage('setoption name Hash value 32');
+            stockfish.postMessage(`setoption name Skill Level value ${curProfile.skill}`);
             stockfish.postMessage(`setoption name MultiPV value ${CONFIG.multiPV}`);
             stockfish.postMessage('isready');
             setEngineStatus('ready');
@@ -1538,8 +1656,9 @@ function initNeonChessHelper() {
             return match ? { ...match, gambit: GAMBIT_BOOK[match.gambitKey] } : null;
         }
 
-        // AUTO MODE: only use sound, match-worthy gambits (autoEnabled: true)
-        const soundCandidates = legalCandidates.filter(c => c.autoEnabled);
+        // AUTO MODE: only use sound, match-worthy gambits within the active ELO profile's book depth
+        const eloProfile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
+        const soundCandidates = legalCandidates.filter(c => c.autoEnabled && c.ply < eloProfile.maxBookPly);
         if (soundCandidates.length === 0) return null;
 
         // If a gambit line was already locked earlier in this match and stays available, prefer consistency
@@ -1684,29 +1803,53 @@ function initNeonChessHelper() {
                 currentAnalysis.weak = { ...currentAnalysis.medium };
             }
         } else if (topPv) {
+            const eloProfile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
+            let primarySrc = topPv;
+
+            if (eloProfile.targetDropCp > 0 && pvList.length > 1) {
+                let bestDiff = Infinity;
+                for (let idx = 0; idx < pvList.length; idx++) {
+                    const c = pvList[idx];
+                    const drop = topPv.rawCp - c.rawCp;
+                    const safeFromForcedMate = !(c.type === 'mate' && c.mateVal < 0 && topPv.rawCp > -400);
+                    if (safeFromForcedMate && drop <= eloProfile.maxDropCp) {
+                        const diff = Math.abs(drop - eloProfile.targetDropCp);
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            primarySrc = c;
+                        }
+                    }
+                }
+            }
+
+            const f1 = formatPerspectiveEval(primarySrc, turnColor, myColor);
             currentAnalysis.good = {
-                uci: topPv.uci,
-                eval: topFormatted.text,
-                myCp: topFormatted.myCp,
-                winPct: topFormatted.winPct,
+                uci: primarySrc.uci,
+                eval: f1.text,
+                myCp: f1.myCp,
+                winPct: f1.winPct,
                 isGambit: false
             };
 
-            // Smart Blunder Guard for Tier 2 (<= 140cp drop) & Tier 3 (<= 260cp drop)
-            const medCandidate = pvList[1];
+            const remainingPvs = pvList.filter(c => c.uci !== primarySrc.uci);
+            // Smart Blunder Guard for Tier 2 & Tier 3
+            const medCandidate = remainingPvs[0] || pvList[1];
+            const medMaxDrop = Math.max(140, eloProfile.maxDropCp + 60);
             const medSafe = medCandidate &&
-                (topPv.rawCp - medCandidate.rawCp <= 140) &&
+                (topPv.rawCp - medCandidate.rawCp <= medMaxDrop) &&
                 !(topPv.type === 'mate' && topPv.mateVal > 0 && medCandidate.rawCp < 200) &&
                 !(medCandidate.type === 'mate' && medCandidate.mateVal < 0 && topPv.rawCp > -400);
 
-            const medSrc = medSafe ? medCandidate : topPv;
+            const medSrc = medSafe ? medCandidate : primarySrc;
             const f2 = formatPerspectiveEval(medSrc, turnColor, myColor);
             currentAnalysis.medium = { uci: medSrc.uci, eval: f2.text, myCp: f2.myCp, winPct: f2.winPct };
 
             let weakSrc = medSrc;
-            for (let idx = pvList.length - 1; idx >= 1; idx--) {
-                const c = pvList[idx];
-                const ok = (topPv.rawCp - c.rawCp <= 260) &&
+            const weakMaxDrop = Math.max(260, eloProfile.maxDropCp + 160);
+            for (let idx = remainingPvs.length - 1; idx >= 0; idx--) {
+                const c = remainingPvs[idx];
+                if (c.uci === medSrc.uci) continue;
+                const ok = (topPv.rawCp - c.rawCp <= weakMaxDrop) &&
                     !(topPv.type === 'mate' && topPv.mateVal > 0 && c.rawCp < 150) &&
                     !(c.type === 'mate' && c.mateVal < 0 && topPv.rawCp > -400);
                 if (ok) {
@@ -1720,13 +1863,13 @@ function initNeonChessHelper() {
             if (rejectedReason) {
                 currentAnalysis.gambitStatusText = `🛡 ${rejectedReason}`;
             } else if (CONFIG.selectedGambit === 'none') {
-                currentAnalysis.gambitStatusText = `🧠 Engine Mode (Depth ${CONFIG.depth})`;
+                currentAnalysis.gambitStatusText = `🧠 Guide ${CONFIG.elo} ELO (D:${CONFIG.depth})`;
             } else {
                 const waitingMsg = (CONFIG.selectedGambit === 'auto' && activeMatchGambitKey && GAMBIT_BOOK[activeMatchGambitKey])
                     ? `⏳ Tracking: ${GAMBIT_BOOK[activeMatchGambitKey].name}`
                     : `⏳ Waiting for opponent...`;
                 currentAnalysis.gambitStatusText = turnColor === myColor
-                    ? `🧠 Engine Mode (Out of Book)`
+                    ? `🧠 Guide ${CONFIG.elo} ELO (D:${CONFIG.depth})`
                     : waitingMsg;
             }
         } else if (isFinal) {
