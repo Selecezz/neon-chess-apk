@@ -1,4 +1,19 @@
-﻿/**
+﻿// ==UserScript==
+// @name         Neon Chess Pro Assistant & HUD (ELO Slider + Auto-Gambit)
+// @namespace    https://github.com/Selecezz/neon-chess-apk
+// @version      1.0.4
+// @description  Smart Auto-Gambit, Multi-PV Stockfish 10.0.2 & 400/800/1500/2000/2500 ELO Guide Slider for Chess.com
+// @author       Selecezz
+// @match        https://www.chess.com/*
+// @match        https://chess.com/*
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// @connect      cdnjs.cloudflare.com
+// @connect      cdn.jsdelivr.net
+// @run-at       document-idle
+// ==/UserScript==
+
+/**
  * Neon Chess Assistant & HUD (Smart Auto-Gambit & Pro Edition)
  * Engine: Stockfish 10.0.2 (MultiPV + FEN-Transposition Auto-Gambit Engine + SAN/Legal Guard)
  */
@@ -690,17 +705,25 @@ function initNeonChessHelper() {
 
     // --- 5. BOARD HELPERS & PERSPECTIVE ---
     function getBoardElement() {
-        return document.querySelector('wc-chess-board') || document.querySelector('chess-board');
+        const doc = (typeof unsafeWindow !== 'undefined' && unsafeWindow.document) ? unsafeWindow.document : document;
+        return doc.querySelector('wc-chess-board') || doc.querySelector('chess-board');
+    }
+
+    function getBoardGame(board) {
+        if (!board) return null;
+        return board.game || (board.wrappedJSObject && board.wrappedJSObject.game) || null;
     }
 
     function isBoardFlipped(board) {
         if (!board) return false;
         try {
-            if (board.classList.contains('flipped') || board.hasAttribute('flipped') || board.flipped === true) {
+            const raw = board.wrappedJSObject || board;
+            if (board.classList.contains('flipped') || board.hasAttribute('flipped') || raw.flipped === true) {
                 return true;
             }
-            if (board.game && typeof board.game.getOptions === 'function') {
-                const opts = board.game.getOptions();
+            const game = getBoardGame(board);
+            if (game && typeof game.getOptions === 'function') {
+                const opts = game.getOptions();
                 if (opts && opts.flipped) return true;
             }
         } catch (e) {}
@@ -710,8 +733,9 @@ function initNeonChessHelper() {
     function getMyColor(board) {
         if (!board) return 'w';
         try {
-            if (board.game && typeof board.game.getPlayingAs === 'function') {
-                const playingAs = board.game.getPlayingAs();
+            const game = getBoardGame(board);
+            if (game && typeof game.getPlayingAs === 'function') {
+                const playingAs = game.getPlayingAs();
                 if (playingAs === 1 || playingAs === 'w' || playingAs === 'white') return 'w';
                 if (playingAs === 2 || playingAs === 'b' || playingAs === 'black') return 'b';
             }
@@ -722,9 +746,10 @@ function initNeonChessHelper() {
     function getBoardFen(board) {
         if (!board) return null;
         try {
-            if (board.game) {
-                if (typeof board.game.getFEN === 'function') return board.game.getFEN();
-                if (typeof board.game.getFen === 'function') return board.game.getFen();
+            const game = getBoardGame(board);
+            if (game) {
+                if (typeof game.getFEN === 'function') return game.getFEN();
+                if (typeof game.getFen === 'function') return game.getFen();
             }
             if (typeof board.getAttribute === 'function') {
                 const attrFen = board.getAttribute('fen');
@@ -736,7 +761,8 @@ function initNeonChessHelper() {
 
     function checkIsGameOver(board, fen) {
         try {
-            if (board && board.game && typeof board.game.isGameOver === 'function' && board.game.isGameOver()) {
+            const game = getBoardGame(board);
+            if (game && typeof game.isGameOver === 'function' && game.isGameOver()) {
                 return true;
             }
         } catch (e) {}
@@ -1539,6 +1565,19 @@ function initNeonChessHelper() {
                     if (scriptText && scriptText.length > 1000) break;
                 }
             } catch (e) {}
+            if (!scriptText && typeof GM_xmlhttpRequest === 'function') {
+                try {
+                    scriptText = await new Promise((resolve) => {
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: urls[i],
+                            onload: (r) => resolve(r && r.status === 200 ? r.responseText : ''),
+                            onerror: () => resolve('')
+                        });
+                    });
+                    if (scriptText && scriptText.length > 1000) break;
+                } catch (e) {}
+            }
         }
 
         if (!scriptText) {
@@ -2006,7 +2045,7 @@ function initNeonChessHelper() {
         }
 
         const board = getBoardElement();
-        if (!board || !board.game) return;
+        if (!board || !getBoardGame(board)) return;
 
         attachBoardObserver(board);
 
@@ -2077,13 +2116,14 @@ function initNeonChessHelper() {
     }
 
     function executeMoveOnBoard(board, uci, expectedFen) {
-        if (!board || !board.game || !uci || uci.length < 4) return false;
+        const game = getBoardGame(board);
+        if (!board || !game || !uci || uci.length < 4) return false;
         const liveFen = getBoardFen(board);
         if (expectedFen && liveFen !== expectedFen) return false;
         if (!isLegalUci(liveFen, uci)) return false;
 
         try {
-            if (typeof board.game.move === 'function') {
+            if (typeof game.move === 'function') {
                 const payload = {
                     from: uci.slice(0, 2),
                     to: uci.slice(2, 4),
@@ -2091,7 +2131,7 @@ function initNeonChessHelper() {
                     userGenerated: true
                 };
                 if (uci.length > 4) payload.promotion = uci[4];
-                board.game.move(payload);
+                game.move(payload);
                 return true;
             }
         } catch (e) {}
@@ -2100,7 +2140,7 @@ function initNeonChessHelper() {
 
     function executeMoveForTier(tier) {
         const board = getBoardElement();
-        if (!board || !board.game) return;
+        if (!board || !getBoardGame(board)) return;
         const liveFen = getBoardFen(board);
         if (!liveFen || checkIsGameOver(board, liveFen)) return;
         const parsed = parseFen(liveFen);
@@ -2121,7 +2161,7 @@ function initNeonChessHelper() {
     function triggerAutoMoveIfMyTurn() {
         if (!CONFIG.autoMove) return;
         const board = getBoardElement();
-        if (!board || !board.game) return;
+        if (!board || !getBoardGame(board)) return;
 
         const liveFen = getBoardFen(board);
         if (!liveFen || liveFen !== currentAnalysis.fen || checkIsGameOver(board, liveFen)) return;
