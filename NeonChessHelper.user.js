@@ -659,7 +659,14 @@ function initNeonChessHelper() {
         selectedTier: parseInt(getStore('nc_tier'), 10) || 1,
         selectedGambit: savedGambit,
         isMinimized: getStore('nc_minimized') === 'true',
-        showArrows: getStore('nc_arrows') !== 'false'
+        // Stealth mode is on by default. It routes auto-moves through synthetic
+        // pointer input instead of game.move(), jitters timing, and mixes the
+        // candidate tiers so the move stream does not read like an engine.
+        stealth: getStore('nc_stealth') !== 'false',
+        humanMix: getStore('nc_humanmix') !== 'false',
+        showArrows: getStore('nc_stealth') === 'false'
+            ? getStore('nc_arrows') !== 'false'
+            : getStore('nc_arrows') === 'true'
     };
 
     // --- 4. ENGINE & MATCH RUNTIME STATE ---
@@ -1304,6 +1311,7 @@ function initNeonChessHelper() {
                     <button class="hud-btn" id="btn-force">SCAN</button>
                     <button class="hud-btn" id="btn-depth">D:${CONFIG.depth}</button>
                     <button class="hud-btn ${CONFIG.showArrows ? 'active' : ''}" id="btn-arrows">ARROW</button>
+                    <button class="hud-btn ${CONFIG.stealth ? 'active' : ''}" id="btn-stealth" title="Human-shaped input + timing + move mixing">STEALTH</button>
                 </div>
             </div>
         `;
@@ -1451,6 +1459,21 @@ function initNeonChessHelper() {
             CONFIG.showArrows = !CONFIG.showArrows;
             setStore('nc_arrows', CONFIG.showArrows);
             e.target.classList.toggle('active', CONFIG.showArrows);
+            scheduleRender(true);
+        });
+
+        // Stealth toggle: pointer-input moves, jittered timing, candidate mixing.
+        document.getElementById('btn-stealth').addEventListener('click', (e) => {
+            CONFIG.stealth = !CONFIG.stealth;
+            setStore('nc_stealth', CONFIG.stealth);
+            e.target.classList.toggle('active', CONFIG.stealth);
+            if (CONFIG.stealth) {
+                // On-board arrows are the most visible injected artifact.
+                CONFIG.showArrows = false;
+                setStore('nc_arrows', false);
+                const arrowBtn = document.getElementById('btn-arrows');
+                if (arrowBtn) arrowBtn.classList.remove('active');
+            }
             scheduleRender(true);
         });
 
@@ -2109,10 +2132,97 @@ function initNeonChessHelper() {
         }
     }
 
+    // --- STEALTH: human-shaped timing, candidate mixing, pointer input ---
+    function stealthDelay(base) {
+        if (!CONFIG.stealth) return base;
+        // Wide jitter plus an occasional longer "thinking" pause. A fixed
+        // interval is the easiest engine signature for a behaviour model.
+        const jitter = 0.6 + Math.random() * 1.05;
+        const pause = Math.random() < 0.12 ? 350 + Math.random() * 950 : 0;
+        return Math.max(180, Math.round(base * jitter + pause));
+    }
+
+    function pickStealthUci(tier) {
+        const good = currentAnalysis.good && currentAnalysis.good.uci;
+        const med = currentAnalysis.medium && currentAnalysis.medium.uci;
+        const weak = currentAnalysis.weak && currentAnalysis.weak.uci;
+        if (!CONFIG.stealth || !CONFIG.humanMix) {
+            if (tier === 2) return med || good;
+            if (tier === 3) return weak || med || good;
+            return good || med || weak;
+        }
+        const profile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
+        // Higher configured strength biases toward the best move, but never
+        // to 100% -- a perfect move sequence is itself a detection signal.
+        const bestBias = Math.max(0.42, Math.min(0.86, 0.5 + (profile.skill / 20) * 0.34));
+        const roll = Math.random();
+        if (roll < bestBias) return good || med || weak;
+        if (roll < bestBias + (1 - bestBias) * 0.62) return med || good || weak;
+        return weak || med || good;
+    }
+
     function getSelectedMoveUci(tier = CONFIG.selectedTier) {
-        if (tier === 2) return currentAnalysis.medium.uci;
-        if (tier === 3) return currentAnalysis.weak.uci;
-        return currentAnalysis.good.uci;
+        return pickStealthUci(tier);
+    }
+
+    function squaredPoint(board, square, flipped) {
+        const rect = board.getBoundingClientRect();
+        const file = square.charCodeAt(0) - 97;
+        const rank = parseInt(square[1], 10);
+        const col = flipped ? 7 - file : file;
+        const row = flipped ? rank - 1 : 8 - rank;
+        return {
+            x: rect.left + (col + 0.5) * (rect.width / 8),
+            y: rect.top + (row + 0.5) * (rect.height / 8)
+        };
+    }
+
+    function firePointer(target, type, x, y, buttons) {
+        const init = {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            clientX: x, clientY: y, screenX: x, screenY: y,
+            pointerId: 1, pointerType: 'mouse', isPrimary: true,
+            button: 0, buttons: buttons
+        };
+        let ev;
+        try {
+            ev = (typeof PointerEvent === 'function') ? new PointerEvent(type, init) : new MouseEvent(type, init);
+        } catch (e) {
+            ev = document.createEvent('MouseEvents');
+            ev.initMouseEvent(type, true, true, window, 0, x, y, x, y, false, false, false, false, 0, null);
+        }
+        target.dispatchEvent(ev);
+    }
+
+    // Play the move as a drag/click through the board's normal event path.
+    // game.move() with userGenerated:true leaves a synthetic-move trace in
+    // some clients; pointer events look identical to a human move.
+    function dispatchHumanMove(board, uci) {
+        if (!board || !uci || uci.length !== 4) return false;
+        try {
+            const flipped = isBoardFlipped(board);
+            const from = squaredPoint(board, uci.slice(0, 2), flipped);
+            const to = squaredPoint(board, uci.slice(2, 4), flipped);
+            const targets = [board];
+            const hitFrom = document.elementFromPoint(from.x, from.y);
+            const hitTo = document.elementFromPoint(to.x, to.y);
+            if (hitFrom && hitFrom !== board) targets.push(hitFrom);
+            if (hitTo && hitTo !== board) targets.push(hitTo);
+
+            targets.forEach((t) => {
+                firePointer(t, 'pointerover', from.x, from.y, 0);
+                firePointer(t, 'pointerdown', from.x, from.y, 1);
+                firePointer(t, 'mousedown', from.x, from.y, 1);
+                firePointer(t, 'pointermove', to.x, to.y, 1);
+                firePointer(t, 'mousemove', to.x, to.y, 1);
+                firePointer(t, 'pointerup', to.x, to.y, 0);
+                firePointer(t, 'mouseup', to.x, to.y, 0);
+                firePointer(t, 'click', to.x, to.y, 0);
+            });
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     function executeMoveOnBoard(board, uci, expectedFen) {
@@ -2121,6 +2231,13 @@ function initNeonChessHelper() {
         const liveFen = getBoardFen(board);
         if (expectedFen && liveFen !== expectedFen) return false;
         if (!isLegalUci(liveFen, uci)) return false;
+
+        // Stealth: go through the real input path first. The direct game.move()
+        // branch stays as a fallback for boards that ignore synthetic pointer
+        // events (and for promotions, which need a separate piece picker).
+        if (CONFIG.stealth && uci.length === 4 && dispatchHumanMove(board, uci)) {
+            return true;
+        }
 
         try {
             if (typeof game.move === 'function') {
@@ -2185,7 +2302,7 @@ function initNeonChessHelper() {
             clearAutoMoveTimer();
             if (!CONFIG.autoMove) return;
             executeMoveOnBoard(getBoardElement(), uci, targetFen);
-        }, CONFIG.delayMs);
+        }, stealthDelay(CONFIG.delayMs));
     }
 
     // --- 12. CRISP SVG VECTOR ARROWS (ZERO BLUR LAG) ---

@@ -18,6 +18,16 @@ Uses the Stockfish WebWorker engine (`readyok`-synchronized) to compute top cand
 - **TIER 2 (`MED` - Amber)**: A natural 2nd-best alternative protected by a centipawn blunder guard.
 - **TIER 3 (`SAFE` - Crimson)**: A lower-pressure alternative that still avoids blunders and mate traps.
 
+### Stealth Mode (default: ON)
+Stealth Mode reshapes the move stream so it does not carry the usual engine-assist signatures:
+
+- **Pointer-input execution** — auto-moves are dispatched as real pointer/mouse down-move-up sequences on the board squares, going through the same input path a human drag takes. The old direct `game.move()` call is kept only as a fallback.
+- **Jittered timing** — the selected delay is multiplied by a 0.6–1.65 random factor, with a 12% chance of an extra 350–1300 ms "thinking" pause. No fixed move cadence.
+- **Candidate mixing** — instead of always playing the top engine move, the helper samples between the `BEST / MED / SAFE` tiers. The bias scales with the configured ELO profile, so stronger settings still favour the best move without producing a perfect sequence.
+- **No on-board arrows** — enabling Stealth turns the SVG overlay off, since a floating analysis layer is the most visible injected artifact. The compact HUD stays draggable and minimizable.
+
+Toggle it with the `STEALTH` button in the HUD. Settings persist in `localStorage` (`nc_stealth`, `nc_humanmix`).
+
 ### 3. Performance & Quality of Life (QoL)
 - **GPU-Accelerated & Viewport-Clamped Dragging**: Uses `transform: translate3d` dragging clamped inside the screen bounds and persisted across sessions.
 - **Instant Board Observer**: Uses a `MutationObserver` on the chessboard (with 500ms fallback) plus `requestAnimationFrame` throttling for near-instant reaction.
