@@ -21,12 +21,20 @@ Uses the Stockfish WebWorker engine (`readyok`-synchronized) to compute top cand
 ### Stealth Mode (default: ON)
 Stealth Mode reshapes the move stream so it does not carry the usual engine-assist signatures:
 
-- **Pointer-input execution** — auto-moves are dispatched as real pointer/mouse down-move-up sequences on the board squares, going through the same input path a human drag takes. The old direct `game.move()` call is kept only as a fallback.
+- **Human-shaped drag** — a move is played as one coherent pointer sequence on the actual piece element: a small idle offset, `pointerdown`, a 45–155 ms hold, 3–5 eased `pointermove` steps, then `pointerup` + `click`. Events are dispatched on a single target and bubble naturally; no duplicate handler calls. The old direct `game.move()` call is kept only as a fallback for boards that ignore synthetic input and for promotions.
 - **Jittered timing** — the selected delay is multiplied by a 0.6–1.65 random factor, with a 12% chance of an extra 350–1300 ms "thinking" pause. No fixed move cadence.
+- **One move per position** — the chosen move and its timer are locked per FEN. Engine depth updates no longer re-roll the move or re-arm the timer, so auto-move always fires.
 - **Candidate mixing** — instead of always playing the top engine move, the helper samples between the `BEST / MED / SAFE` tiers. The bias scales with the configured ELO profile, so stronger settings still favour the best move without producing a perfect sequence.
 - **No on-board arrows** — enabling Stealth turns the SVG overlay off, since a floating analysis layer is the most visible injected artifact. The compact HUD stays draggable and minimizable.
 
 Toggle it with the `STEALTH` button in the HUD. Settings persist in `localStorage` (`nc_stealth`, `nc_humanmix`).
+
+### Analysis & performance (v1.1.0)
+- **BEST tier is the real engine top move** — the ELO profile now only softens the alternative tiers, so the primary analysis is always full strength.
+- **Distance-aware mate scores** — M1 outranks M9, and mate lines are kept inside the blunder-guard thresholds.
+- **Stale-PV guard** — any Stockfish line that is not legal on the current FEN is discarded before it can reach the HUD or an auto-move.
+- **Engine caching** — Stockfish is stored in `localStorage` after the first load, so relaunching does not re-download ~220 KB.
+- **Deterministic worker options** — `Threads 1` and `Contempt 0` keep analysis stable across machines.
 
 ### 3. Performance & Quality of Life (QoL)
 - **GPU-Accelerated & Viewport-Clamped Dragging**: Uses `transform: translate3d` dragging clamped inside the screen bounds and persisted across sessions.

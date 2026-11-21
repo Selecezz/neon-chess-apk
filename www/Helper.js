@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         Neon Chess Pro Assistant & HUD (ELO Slider + Auto-Gambit)
 // @namespace    https://github.com/Selecezz/neon-chess-apk
-// @version      1.0.4
+// @version      1.1.0
 // @description  Smart Auto-Gambit, Multi-PV Stockfish 10.0.2 & 400/800/1500/2000/2500 ELO Guide Slider for Chess.com
 // @author       Selecezz
 // @match        https://www.chess.com/*
@@ -1579,27 +1579,38 @@ function initNeonChessHelper() {
             'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js'
         ];
 
+        // Lightweight: the engine is ~220 KB. Cache it in localStorage so a
+        // relaunch does not re-download it on every page load.
+        const CACHE_KEY = 'nc_sf_10_0_2';
         let scriptText = '';
-        for (let i = 0; i < urls.length; i++) {
-            try {
-                const res = await fetch(urls[i]);
-                if (res.ok) {
-                    scriptText = await res.text();
-                    if (scriptText && scriptText.length > 1000) break;
-                }
-            } catch (e) {}
-            if (!scriptText && typeof GM_xmlhttpRequest === 'function') {
+        try { scriptText = localStorage.getItem(CACHE_KEY) || ''; } catch (e) {}
+        if (scriptText.length < 1000) scriptText = '';
+
+        if (!scriptText) {
+            for (let i = 0; i < urls.length; i++) {
                 try {
-                    scriptText = await new Promise((resolve) => {
-                        GM_xmlhttpRequest({
-                            method: 'GET',
-                            url: urls[i],
-                            onload: (r) => resolve(r && r.status === 200 ? r.responseText : ''),
-                            onerror: () => resolve('')
-                        });
-                    });
-                    if (scriptText && scriptText.length > 1000) break;
+                    const res = await fetch(urls[i]);
+                    if (res.ok) {
+                        scriptText = await res.text();
+                        if (scriptText && scriptText.length > 1000) break;
+                    }
                 } catch (e) {}
+                if (!scriptText && typeof GM_xmlhttpRequest === 'function') {
+                    try {
+                        scriptText = await new Promise((resolve) => {
+                            GM_xmlhttpRequest({
+                                method: 'GET',
+                                url: urls[i],
+                                onload: (r) => resolve(r && r.status === 200 ? r.responseText : ''),
+                                onerror: () => resolve('')
+                            });
+                        });
+                        if (scriptText && scriptText.length > 1000) break;
+                    } catch (e) {}
+                }
+            }
+            if (scriptText.length > 1000) {
+                try { localStorage.setItem(CACHE_KEY, scriptText); } catch (e) {}
             }
         }
 
@@ -1647,14 +1658,28 @@ function initNeonChessHelper() {
                         const val = parseInt(scoreMatch[2], 10);
                         const uciMove = pvMatch[1];
 
+                        // Drop any line that is not legal on the analysed FEN.
+                        // A stale PV from a previous search must never become
+                        // an auto-move candidate.
+                        if (currentAnalysis.fen && !isLegalUci(currentAnalysis.fen, uciMove)) return;
+
                         if (d > highestPvDepth) highestPvDepth = d;
+
+                        // Mate scores are distance-aware: M1 must outrank M9.
+                        // Keep the magnitude inside the existing cp threshold
+                        // ranges so the tier logic keeps working unchanged.
+                        const mateCp = type === 'mate'
+                            ? (val > 0 ? 1500 - Math.max(0, val) * 60 : -1500 + Math.max(0, -val) * 60)
+                            : val;
 
                         pvData[rank] = {
                             depth: d,
                             uci: uciMove,
                             type,
                             mateVal: type === 'mate' ? val : 0,
-                            rawCp: type === 'mate' ? (val > 0 ? 1200 : -1200) : val
+                            rawCp: type === 'mate'
+                                ? Math.max(-1500, Math.min(1500, mateCp))
+                                : val
                         };
 
                         // Fast trigger for Auto-Gambit book validation once depth >= 6
@@ -1678,6 +1703,8 @@ function initNeonChessHelper() {
             const curProfile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
             stockfish.postMessage('uci');
             stockfish.postMessage('setoption name Hash value 32');
+            stockfish.postMessage('setoption name Threads value 1');
+            stockfish.postMessage('setoption name Contempt value 0');
             stockfish.postMessage(`setoption name Skill Level value ${curProfile.skill}`);
             stockfish.postMessage(`setoption name MultiPV value ${CONFIG.multiPV}`);
             stockfish.postMessage('isready');
@@ -1866,7 +1893,11 @@ function initNeonChessHelper() {
             }
         } else if (topPv) {
             const eloProfile = ELO_PROFILES[CONFIG.elo] || ELO_PROFILES[2500];
-            let primarySrc = topPv;
+            // BEST tier is always the engine's real top move. Stronger
+            // analysis is the point of the assistant; the ELO profile only
+            // softens the alternative tiers used by human-style mixing.
+            const primarySrc = topPv;
+            let humanSrc = topPv;
 
             if (eloProfile.targetDropCp > 0 && pvList.length > 1) {
                 let bestDiff = Infinity;
@@ -1878,7 +1909,7 @@ function initNeonChessHelper() {
                         const diff = Math.abs(drop - eloProfile.targetDropCp);
                         if (diff < bestDiff) {
                             bestDiff = diff;
-                            primarySrc = c;
+                            humanSrc = c;
                         }
                     }
                 }
@@ -1893,16 +1924,18 @@ function initNeonChessHelper() {
                 isGambit: false
             };
 
-            const remainingPvs = pvList.filter(c => c.uci !== primarySrc.uci);
-            // Smart Blunder Guard for Tier 2 & Tier 3
-            const medCandidate = remainingPvs[0] || pvList[1];
+            // Keep the BEST move out of the alternative tiers so the three
+            // rows never duplicate, and let the ELO-softened move feed the
+            // human-style tiers.
+            const remainingPvs = pvList.filter(c => c.uci !== primarySrc.uci && c.uci !== humanSrc.uci);
+            const medCandidate = remainingPvs[0] || (humanSrc !== primarySrc ? humanSrc : pvList[1]);
             const medMaxDrop = Math.max(140, eloProfile.maxDropCp + 60);
             const medSafe = medCandidate &&
                 (topPv.rawCp - medCandidate.rawCp <= medMaxDrop) &&
                 !(topPv.type === 'mate' && topPv.mateVal > 0 && medCandidate.rawCp < 200) &&
                 !(medCandidate.type === 'mate' && medCandidate.mateVal < 0 && topPv.rawCp > -400);
 
-            const medSrc = medSafe ? medCandidate : primarySrc;
+            const medSrc = medSafe ? medCandidate : (humanSrc !== primarySrc ? humanSrc : primarySrc);
             const f2 = formatPerspectiveEval(medSrc, turnColor, myColor);
             currentAnalysis.medium = { uci: medSrc.uci, eval: f2.text, myCp: f2.myCp, winPct: f2.winPct };
 
@@ -2198,30 +2231,51 @@ function initNeonChessHelper() {
     // game.move() with userGenerated:true leaves a synthetic-move trace in
     // some clients; pointer events look identical to a human move.
     function dispatchHumanMove(board, uci) {
-        if (!board || !uci || uci.length !== 4) return false;
+        if (!board || !uci || uci.length !== 4) return Promise.resolve(false);
         try {
             const flipped = isBoardFlipped(board);
             const from = squaredPoint(board, uci.slice(0, 2), flipped);
             const to = squaredPoint(board, uci.slice(2, 4), flipped);
-            const targets = [board];
-            const hitFrom = document.elementFromPoint(from.x, from.y);
-            const hitTo = document.elementFromPoint(to.x, to.y);
-            if (hitFrom && hitFrom !== board) targets.push(hitFrom);
-            if (hitTo && hitTo !== board) targets.push(hitTo);
 
-            targets.forEach((t) => {
-                firePointer(t, 'pointerover', from.x, from.y, 0);
-                firePointer(t, 'pointerdown', from.x, from.y, 1);
-                firePointer(t, 'mousedown', from.x, from.y, 1);
-                firePointer(t, 'pointermove', to.x, to.y, 1);
-                firePointer(t, 'mousemove', to.x, to.y, 1);
-                firePointer(t, 'pointerup', to.x, to.y, 0);
-                firePointer(t, 'mouseup', to.x, to.y, 0);
-                firePointer(t, 'click', to.x, to.y, 0);
+            // One target only. Events bubble, so dispatching on the board AND
+            // on its children fired the chessboard handler several times.
+            const target = document.elementFromPoint(from.x, from.y) || board;
+            const jx = (Math.random() - 0.5) * 8;
+            const jy = (Math.random() - 0.5) * 8;
+
+            firePointer(target, 'pointerover', from.x + jx, from.y + jy, 0);
+            firePointer(target, 'pointermove', from.x + jx, from.y + jy, 0);
+            firePointer(target, 'pointerdown', from.x, from.y, 1);
+            firePointer(target, 'mousedown', from.x, from.y, 1);
+
+            const hold = 45 + Math.random() * 110;
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const steps = 3 + Math.floor(Math.random() * 3);
+                    let i = 0;
+                    const step = () => {
+                        i++;
+                        const t = i / steps;
+                        // Slight ease-out, like a real hand slowing near target.
+                        const eased = 1 - Math.pow(1 - t, 1.4);
+                        const x = from.x + (to.x - from.x) * eased;
+                        const y = from.y + (to.y - from.y) * eased;
+                        firePointer(target, 'pointermove', x, y, 1);
+                        firePointer(target, 'mousemove', x, y, 1);
+                        if (i < steps) {
+                            setTimeout(step, 16 + Math.random() * 26);
+                        } else {
+                            firePointer(target, 'pointerup', to.x, to.y, 0);
+                            firePointer(target, 'mouseup', to.x, to.y, 0);
+                            firePointer(target, 'click', to.x, to.y, 0);
+                            setTimeout(() => resolve(true), 12);
+                        }
+                    };
+                    step();
+                }, hold);
             });
-            return true;
         } catch (e) {
-            return false;
+            return Promise.resolve(false);
         }
     }
 
@@ -2235,24 +2289,32 @@ function initNeonChessHelper() {
         // Stealth: go through the real input path first. The direct game.move()
         // branch stays as a fallback for boards that ignore synthetic pointer
         // events (and for promotions, which need a separate piece picker).
-        if (CONFIG.stealth && uci.length === 4 && dispatchHumanMove(board, uci)) {
-            return true;
-        }
+        const directMove = () => {
+            try {
+                if (typeof game.move === 'function') {
+                    const payload = {
+                        from: uci.slice(0, 2),
+                        to: uci.slice(2, 4),
+                        animate: true,
+                        userGenerated: true
+                    };
+                    if (uci.length > 4) payload.promotion = uci[4];
+                    game.move(payload);
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        };
 
-        try {
-            if (typeof game.move === 'function') {
-                const payload = {
-                    from: uci.slice(0, 2),
-                    to: uci.slice(2, 4),
-                    animate: true,
-                    userGenerated: true
-                };
-                if (uci.length > 4) payload.promotion = uci[4];
-                game.move(payload);
+        if (CONFIG.stealth && uci.length === 4) {
+            const dispatched = dispatchHumanMove(board, uci);
+            if (dispatched && typeof dispatched.then === 'function') {
+                dispatched.then((ok) => { if (!ok) directMove(); });
                 return true;
             }
-        } catch (e) {}
-        return false;
+            if (dispatched) return true;
+        }
+        return directMove();
     }
 
     function executeMoveForTier(tier) {
@@ -2287,12 +2349,13 @@ function initNeonChessHelper() {
         const myColor = getMyColor(board);
         if (!parsed || parsed.turn !== myColor) return;
 
+        // A move is chosen ONCE per position. Engine depth updates call this
+        // repeatedly; re-picking a random human-mix move each time used to
+        // clear and re-arm the timer so it never actually fired.
+        if (autoMoveTimer && autoMoveScheduledFen === liveFen) return;
+
         const uci = getSelectedMoveUci();
         if (!uci || uci.length < 4 || !isLegalUci(liveFen, uci)) return;
-
-        if (autoMoveTimer && autoMoveScheduledFen === liveFen && autoMoveScheduledUci === uci) {
-            return;
-        }
 
         clearAutoMoveTimer();
         autoMoveScheduledFen = liveFen;
